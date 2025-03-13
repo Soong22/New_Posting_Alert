@@ -99,8 +99,8 @@ def send_telegram_message(token, chat_id, text):
     return r
 
 # 텔레그램 봇 토큰과 채팅 ID (여기에 본인의 값을 입력)
-TELEGRAM_TOKEN = "YOUR_TELEGRAM_TOKEN"
-TELEGRAM_CHAT_ID = "YOUR_CHAT_ID"
+TELEGRAM_TOKEN = "7867142124:AAGASrA9H9fpwL8VnIGkT211ucBLzAIsiKw"
+TELEGRAM_CHAT_ID = "7692140662"
 
 # 각 블로그 정보 및 사용할 크롤링 함수를 지정
 blogs = [
