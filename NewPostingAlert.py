@@ -14,7 +14,7 @@ def get_chrome_driver():
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    # 만약 Heroku나 다른 환경에서 추가 옵션이 필요하면 여기서 설정할 수 있습니다.
+    # 필요시 Heroku 등 환경에 맞게 추가 옵션을 설정할 수 있습니다.
     driver = webdriver.Chrome(options=options)
     return driver
 
@@ -53,7 +53,7 @@ def crawl_blog_default(blog_url, blog_id):
     driver.quit()
     return posts
 
-# ranto28 전용 크롤러 (구조가 다르다면 CSS 선택자 등을 조정)
+# ranto28 전용 크롤러 (구조가 다르면 CSS 선택자 등을 조정)
 def crawl_blog_ranto28(blog_url, blog_id):
     driver = get_chrome_driver()
     driver.get(blog_url)
@@ -108,9 +108,9 @@ def send_telegram_message(token, chat_id, text):
     r = requests.post(url, data=payload)
     return r
 
-# 텔레그램 봇 토큰과 채팅 ID (본인의 값을 입력)
+# 텔레그램 봇 토큰과 채팅 ID들 (여러 개 지정)
 TELEGRAM_TOKEN = "7867142124:AAGASrA9H9fpwL8VnIGkT211ucBLzAIsiKw"
-TELEGRAM_CHAT_ID = "7692140662"
+TELEGRAM_CHAT_IDS = ["7692140662", "6192459712"]
 
 # 블로그 아이디와 텔레그램 메시지에 사용할 별칭(블로그 제목) 매핑
 blog_names = {
@@ -154,7 +154,9 @@ def main():
                 message = (f"📌 '{display_name}' 블로그에 새로운 게시물이 올라왔습니다!\n"
                            f"{post['title']}\n"
                            f"{post_link}")
-                send_telegram_message(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, message)
+                # 각 채팅 아이디로 메시지 전송
+                for chat_id in TELEGRAM_CHAT_IDS:
+                    send_telegram_message(TELEGRAM_TOKEN, chat_id, message)
                 all_new_posts.append({"blog_id": blog_id, "display_name": display_name, "id": post["id"], "title": post["title"], "link": post_link})
         print("----------------------------------------")
     if not all_new_posts:
