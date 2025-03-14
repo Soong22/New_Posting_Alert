@@ -1,3 +1,4 @@
+import re
 import json
 import os
 import requests
@@ -13,11 +14,14 @@ def get_chrome_driver():
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    # 필요에 따라 HEROKU 환경에서는 binary_location이나 기타 옵션을 추가할 수 있습니다.
     driver = webdriver.Chrome(options=options)
     return driver
 
-# 기본 구조를 갖는 블로그의 크롤링 함수 (예: chamberine3, going_tothe_moon, lhd1371, ldhwc)
+# 실제 게시물만 추출하는 헬퍼 함수: id가 "post_" 뒤에 숫자로만 이루어졌는지 확인
+def is_valid_post_id(post_id):
+    return re.match(r"^post_\d+$", post_id) is not None
+
+# 기본 구조를 갖는 블로그의 크롤링 함수
 def crawl_blog_default(blog_url, blog_id):
     driver = get_chrome_driver()
     driver.get(blog_url)
@@ -34,19 +38,21 @@ def crawl_blog_default(blog_url, blog_id):
     for elem in post_elements:
         try:
             post_id = elem.get_attribute("id")
-            # 게시물 제목 추출 (구조에 따라 CSS 선택자를 조정)
+            if not is_valid_post_id(post_id):
+                continue
             try:
                 title_elem = elem.find_element(By.CSS_SELECTOR, "p.se-text-paragraph")
             except:
                 title_elem = elem.find_element(By.TAG_NAME, "a")
             title = title_elem.text.strip()
-            posts.append({"id": post_id, "title": title})
+            if title:
+                posts.append({"id": post_id, "title": title})
         except Exception:
             continue
     driver.quit()
     return posts
 
-# ranto28은 구조가 약간 다르다고 가정하여 별도의 함수 (구조가 다르다면 CSS 선택자 등을 조정)
+# ranto28 전용 크롤러 (구조가 다르다면 CSS 선택자 등을 조정)
 def crawl_blog_ranto28(blog_url, blog_id):
     driver = get_chrome_driver()
     driver.get(blog_url)
@@ -63,12 +69,15 @@ def crawl_blog_ranto28(blog_url, blog_id):
     for elem in post_elements:
         try:
             post_id = elem.get_attribute("id")
+            if not is_valid_post_id(post_id):
+                continue
             try:
                 title_elem = elem.find_element(By.CSS_SELECTOR, "p.se-text-paragraph")
             except:
                 title_elem = elem.find_element(By.TAG_NAME, "a")
             title = title_elem.text.strip()
-            posts.append({"id": post_id, "title": title})
+            if title:
+                posts.append({"id": post_id, "title": title})
         except Exception:
             continue
     driver.quit()
@@ -102,6 +111,15 @@ def send_telegram_message(token, chat_id, text):
 TELEGRAM_TOKEN = "7867142124:AAGASrA9H9fpwL8VnIGkT211ucBLzAIsiKw"
 TELEGRAM_CHAT_ID = "7692140662"
 
+# 블로그 아이디와 텔레그램 메시지에 사용할 별칭(블로그 제목) 매핑
+blog_names = {
+    "chamberine3": "전황의 주식홈트",
+    "ranto28": "메르",
+    "going_tothe_moon": "고잉투더문",
+    "lhd1371": "한걸음",
+    "ldhwc": "시황맨의 시장이야기"
+}
+
 # 각 블로그 정보 및 사용할 크롤링 함수를 지정
 blogs = [
     {"blog_id": "chamberine3", "url": "https://blog.naver.com/PostList.naver?blogId=chamberine3&categoryNo=0&from=postList", "crawler": crawl_blog_default},
@@ -117,6 +135,7 @@ def main():
     current_data = {}
     for blog in blogs:
         blog_id = blog["blog_id"]
+        display_name = blog_names.get(blog_id, blog_id)
         print(f"📌 {blog_id} 크롤링 중...")
         posts = blog["crawler"](blog["url"], blog_id)
         print(f"🚀 {blog_id}에서 {len(posts)}개의 게시물 발견")
@@ -127,15 +146,17 @@ def main():
             print(f"새로운 게시물 {len(new_posts)}개 발견:")
             for post in new_posts:
                 print(f"  - Post ID: {post['id']} | Title: {post['title']}")
-            for post in new_posts:
-                all_new_posts.append({"blog_id": blog_id, "id": post["id"], "title": post["title"]})
+                # 게시물 링크 생성: "post_" 뒤의 숫자만 사용
+                numeric_id = post["id"].replace("post_", "")
+                post_link = f"https://blog.naver.com/{blog_id}/{numeric_id}"
+                # 텔레그램 메시지 구성 (별칭 사용)
+                message = (f"📌 '{display_name}' 블로그에 새로운 게시물이 올라왔습니다!\n"
+                           f"{post['title']}\n"
+                           f"{post_link}")
+                send_telegram_message(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, message)
+                all_new_posts.append({"blog_id": blog_id, "display_name": display_name, "id": post["id"], "title": post["title"], "link": post_link})
         print("----------------------------------------")
-    if all_new_posts:
-        message = "새로운 게시물이 발견되었습니다:\n"
-        for p in all_new_posts:
-            message += f"{p['blog_id']} - {p['title']} (ID: {p['id']})\n"
-        send_telegram_message(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, message)
-    else:
+    if not all_new_posts:
         print("🚀 모든 블로그에서 새로운 게시물 없음")
     save_data(current_data)
     print("✅ 스크립트 실행 완료")
