@@ -14,6 +14,7 @@ def get_chrome_driver():
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    # 만약 Heroku나 다른 환경에서 추가 옵션이 필요하면 여기서 설정할 수 있습니다.
     driver = webdriver.Chrome(options=options)
     return driver
 
@@ -107,7 +108,7 @@ def send_telegram_message(token, chat_id, text):
     r = requests.post(url, data=payload)
     return r
 
-# 텔레그램 봇 토큰과 채팅 ID (여기에 본인의 값을 입력)
+# 텔레그램 봇 토큰과 채팅 ID (본인의 값을 입력)
 TELEGRAM_TOKEN = "7867142124:AAGASrA9H9fpwL8VnIGkT211ucBLzAIsiKw"
 TELEGRAM_CHAT_ID = "7692140662"
 
@@ -146,10 +147,10 @@ def main():
             print(f"새로운 게시물 {len(new_posts)}개 발견:")
             for post in new_posts:
                 print(f"  - Post ID: {post['id']} | Title: {post['title']}")
-                # 게시물 링크 생성: "post_" 뒤의 숫자만 사용
+                # 게시물 링크 생성: "post_" 뒤의 숫자만 사용 (예: post_123 -> https://blog.naver.com/{blog_id}/123)
                 numeric_id = post["id"].replace("post_", "")
                 post_link = f"https://blog.naver.com/{blog_id}/{numeric_id}"
-                # 텔레그램 메시지 구성 (별칭 사용)
+                # 텔레그램 메시지 구성
                 message = (f"📌 '{display_name}' 블로그에 새로운 게시물이 올라왔습니다!\n"
                            f"{post['title']}\n"
                            f"{post_link}")
