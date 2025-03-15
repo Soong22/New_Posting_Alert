@@ -2,11 +2,18 @@ import re
 import json
 import os
 import requests
+import base64
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
+# GitHub API 관련 환경 변수 (Heroku Config Vars 또는 로컬 환경 변수에 설정)
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+GITHUB_REPO_OWNER = os.environ.get("GITHUB_REPO_OWNER")
+GITHUB_REPO_NAME = os.environ.get("GITHUB_REPO_NAME")
+FILE_PATH = "posts_data.json"
 
 # 셀레니엄 크롬 드라이버 설정 (headless 모드)
 def get_chrome_driver():
@@ -97,9 +104,19 @@ def save_data(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 # 이전 결과와 비교하여 새 게시물만 반환
+# id가 없으면 새로운 게시물이고, id가 동일해도 제목(title)이 변경되었으면 새로운 게시물로 판단합니다.
 def get_new_posts(current, previous):
-    prev_ids = {post["id"] for post in previous}
-    return [post for post in current if post["id"] not in prev_ids]
+    prev_map = {post["id"]: post for post in previous}
+    new_posts = []
+    for post in current:
+        pid = post["id"]
+        if pid not in prev_map:
+            new_posts.append(post)
+        else:
+            # 제목이 변경된 경우
+            if post["title"] != prev_map[pid].get("title", ""):
+                new_posts.append(post)
+    return new_posts
 
 # 텔레그램 메시지 전송 함수
 def send_telegram_message(token, chat_id, text):
@@ -130,6 +147,49 @@ blogs = [
     {"blog_id": "ldhwc", "url": "https://blog.naver.com/PostList.naver?blogId=ldhwc&categoryNo=0&from=postList", "crawler": crawl_blog_default},
 ]
 
+# GitHub API를 사용해 posts_data.json 파일을 업데이트하는 함수
+def update_file_on_github(commit_message="Update posts_data.json"):
+    """GitHub API를 이용하여 파일 내용을 업데이트"""
+    if not GITHUB_TOKEN or not GITHUB_REPO_OWNER or not GITHUB_REPO_NAME:
+        print("❌ GitHub 관련 환경 변수가 설정되어 있지 않습니다.")
+        return
+
+    # 1. 현재 파일 내용을 base64 인코딩
+    with open("posts_data.json", "r", encoding="utf-8") as f:
+        file_content = f.read()
+    encoded_content = base64.b64encode(file_content.encode("utf-8")).decode("utf-8")
+
+    # 2. 기존 파일 정보를 조회하여 SHA 값 가져오기
+    url = f"https://api.github.com/repos/{GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}/contents/{FILE_PATH}"
+    headers = {
+        "Authorization": f"Bearer {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json"
+    }
+    get_resp = requests.get(url, headers=headers)
+    if get_resp.status_code == 200:
+        file_info = get_resp.json()
+        sha = file_info["sha"]
+    elif get_resp.status_code == 404:
+        # 파일이 없으면 새로 생성할 수 있음
+        sha = None
+    else:
+        print("❌ 파일 정보를 가져오지 못했습니다:", get_resp.text)
+        return
+
+    # 3. 파일 업데이트 API 호출 (PUT)
+    data = {
+        "message": commit_message,
+        "content": encoded_content,
+    }
+    if sha:
+        data["sha"] = sha
+
+    put_resp = requests.put(url, headers=headers, json=data)
+    if put_resp.status_code in (200, 201):
+        print("✅ GitHub 파일 업데이트 성공!")
+    else:
+        print("❌ GitHub 파일 업데이트 실패:", put_resp.text)
+
 def main():
     previous_data = load_previous_data()
     all_new_posts = []
@@ -157,12 +217,21 @@ def main():
                 # 각 채팅 아이디로 메시지 전송
                 for chat_id in TELEGRAM_CHAT_IDS:
                     send_telegram_message(TELEGRAM_TOKEN, chat_id, message)
-                all_new_posts.append({"blog_id": blog_id, "display_name": display_name, "id": post["id"], "title": post["title"], "link": post_link})
+                all_new_posts.append({
+                    "blog_id": blog_id,
+                    "display_name": display_name,
+                    "id": post["id"],
+                    "title": post["title"],
+                    "link": post_link
+                })
         print("----------------------------------------")
     if not all_new_posts:
         print("🚀 모든 블로그에서 새로운 게시물 없음")
     save_data(current_data)
     print("✅ 스크립트 실행 완료")
+    
+    # GitHub API를 통해 posts_data.json 파일 업데이트
+    update_file_on_github("자동 업데이트: posts_data.json 변경")
 
 if __name__ == "__main__":
     main()
