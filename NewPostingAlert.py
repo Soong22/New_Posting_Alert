@@ -27,7 +27,6 @@ def get_chrome_driver():
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    # 필요시 Heroku 등 환경에 맞게 추가 옵션을 설정할 수 있습니다.
     driver = webdriver.Chrome(options=options)
     return driver
 
@@ -109,19 +108,16 @@ def save_data(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 # 이전 결과와 비교하여 새 게시물만 반환
-# id가 없으면 새로운 게시물이고, id가 동일해도 제목(title)이 변경되었으면 새로운 게시물로 판단합니다.
+# 동일한 id가 없거나, 동일 id라도 제목이 변경되었으면 새로운 게시물로 판단합니다.
 def get_new_posts(current, previous):
     prev_map = {post["id"]: post for post in previous}
-    new_posts = []
+    new_posts_dict = {}
     for post in current:
         pid = post["id"]
-        if pid not in prev_map:
-            new_posts.append(post)
-        else:
-            # 제목이 변경된 경우
-            if post["title"] != prev_map[pid].get("title", ""):
-                new_posts.append(post)
-    return new_posts
+        # 새로운 게시물이거나 제목 변경이 있으면 추가 (동일 id가 중복되어도 한 번만 처리)
+        if pid not in prev_map or post["title"] != prev_map[pid].get("title", ""):
+            new_posts_dict[pid] = post
+    return list(new_posts_dict.values())
 
 # 텔레그램 메시지 전송 함수
 def send_telegram_message(token, chat_id, text):
@@ -159,7 +155,6 @@ def update_file_on_github(commit_message="Update posts_data.json"):
         print("❌ GitHub 관련 환경 변수가 설정되어 있지 않습니다.")
         return
 
-    # 파일이 존재하지 않을 경우 대비하여 미리 생성
     ensure_posts_data_file()
     
     # 1. 현재 파일 내용을 base64 인코딩
@@ -178,7 +173,6 @@ def update_file_on_github(commit_message="Update posts_data.json"):
         file_info = get_resp.json()
         sha = file_info["sha"]
     elif get_resp.status_code == 404:
-        # 파일이 없으면 새로 생성할 수 있음
         sha = None
     else:
         print("❌ 파일 정보를 가져오지 못했습니다:", get_resp.text)
@@ -215,9 +209,8 @@ def main():
             print(f"새로운 게시물 {len(new_posts)}개 발견:")
             for post in new_posts:
                 print(f"  - Post ID: {post['id']} | Title: {post['title']}")
-                # 게시물 링크 생성: "post_" 뒤의 숫자만 사용 (예: post_123 -> https://blog.naver.com/{blog_id}/123)
-                numeric_id = post["id"].replace("post_", "")
-                post_link = f"https://blog.naver.com/{blog_id}/{numeric_id}"
+                # 텔레그램 메시지에 사용할 링크는 원래 설정한 블로그 URL 사용
+                post_link = blog["url"]
                 # 텔레그램 메시지 구성
                 message = (f"📌 '{display_name}' 블로그에 새로운 게시물이 올라왔습니다!\n"
                            f"{post['title']}\n"
