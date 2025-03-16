@@ -1,13 +1,27 @@
 import re
+import re
 import json
 import os
 import requests
+import base64
 import base64
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
+# GitHub API 관련 환경 변수 (Heroku Config Vars 또는 로컬 환경 변수에 설정)
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
+GITHUB_REPO_OWNER = os.environ.get("GITHUB_REPO_OWNER")
+GITHUB_REPO_NAME = os.environ.get("GITHUB_REPO_NAME")
+FILE_PATH = "posts_data.json"
+
+# posts_data.json 파일이 없으면 기본 파일 생성
+def ensure_posts_data_file():
+    if not os.path.exists("posts_data.json"):
+        with open("posts_data.json", "w", encoding="utf-8") as f:
+            json.dump({}, f, ensure_ascii=False, indent=2)
 
 # GitHub API 관련 환경 변수 (Heroku Config Vars 또는 로컬 환경 변수에 설정)
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
@@ -35,6 +49,11 @@ def is_valid_post_id(post_id):
     return re.match(r"^post_\d+$", post_id) is not None
 
 # 기본 구조를 갖는 블로그의 크롤링 함수
+# 실제 게시물만 추출하는 헬퍼 함수: id가 "post_" 뒤에 숫자로만 이루어졌는지 확인
+def is_valid_post_id(post_id):
+    return re.match(r"^post_\d+$", post_id) is not None
+
+# 기본 구조를 갖는 블로그의 크롤링 함수
 def crawl_blog_default(blog_url, blog_id):
     driver = get_chrome_driver()
     driver.get(blog_url)
@@ -53,6 +72,8 @@ def crawl_blog_default(blog_url, blog_id):
             post_id = elem.get_attribute("id")
             if not is_valid_post_id(post_id):
                 continue
+            if not is_valid_post_id(post_id):
+                continue
             try:
                 title_elem = elem.find_element(By.CSS_SELECTOR, "p.se-text-paragraph")
             except:
@@ -60,11 +81,14 @@ def crawl_blog_default(blog_url, blog_id):
             title = title_elem.text.strip()
             if title:
                 posts.append({"id": post_id, "title": title})
+            if title:
+                posts.append({"id": post_id, "title": title})
         except Exception:
             continue
     driver.quit()
     return posts
 
+# ranto28 전용 크롤러 (구조가 다르면 CSS 선택자 등을 조정)
 # ranto28 전용 크롤러 (구조가 다르면 CSS 선택자 등을 조정)
 def crawl_blog_ranto28(blog_url, blog_id):
     driver = get_chrome_driver()
@@ -84,11 +108,15 @@ def crawl_blog_ranto28(blog_url, blog_id):
             post_id = elem.get_attribute("id")
             if not is_valid_post_id(post_id):
                 continue
+            if not is_valid_post_id(post_id):
+                continue
             try:
                 title_elem = elem.find_element(By.CSS_SELECTOR, "p.se-text-paragraph")
             except:
                 title_elem = elem.find_element(By.TAG_NAME, "a")
             title = title_elem.text.strip()
+            if title:
+                posts.append({"id": post_id, "title": title})
             if title:
                 posts.append({"id": post_id, "title": title})
         except Exception:
@@ -101,6 +129,9 @@ def load_previous_data():
     ensure_posts_data_file()
     with open("posts_data.json", "r", encoding="utf-8") as f:
         return json.load(f)
+    ensure_posts_data_file()
+    with open("posts_data.json", "r", encoding="utf-8") as f:
+        return json.load(f)
 
 # 현재 크롤링 결과 저장
 def save_data(data):
@@ -109,6 +140,7 @@ def save_data(data):
 
 # 이전 결과와 비교하여 새 게시물만 반환
 # 동일한 id가 없거나, 동일 id라도 제목이 변경되었으면 새로운 게시물로 판단합니다.
+# id가 없으면 새로운 게시물이고, id가 동일해도 제목(title)이 변경되었으면 새로운 게시물로 판단합니다.
 def get_new_posts(current, previous):
     prev_map = {post["id"]: post for post in previous}
     new_posts_dict = {}
@@ -227,9 +259,13 @@ def main():
                 })
         print("----------------------------------------")
     if not all_new_posts:
+    if not all_new_posts:
         print("🚀 모든 블로그에서 새로운 게시물 없음")
     save_data(current_data)
     print("✅ 스크립트 실행 완료")
+    
+    # GitHub API를 통해 posts_data.json 파일 업데이트
+    update_file_on_github("자동 업데이트: posts_data.json 변경")
     
     # GitHub API를 통해 posts_data.json 파일 업데이트
     update_file_on_github("자동 업데이트: posts_data.json 변경")
