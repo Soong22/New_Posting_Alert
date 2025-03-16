@@ -15,6 +15,12 @@ GITHUB_REPO_OWNER = os.environ.get("GITHUB_REPO_OWNER")
 GITHUB_REPO_NAME = os.environ.get("GITHUB_REPO_NAME")
 FILE_PATH = "posts_data.json"
 
+# posts_data.json 파일이 없으면 기본 파일 생성
+def ensure_posts_data_file():
+    if not os.path.exists("posts_data.json"):
+        with open("posts_data.json", "w", encoding="utf-8") as f:
+            json.dump({}, f, ensure_ascii=False, indent=2)
+
 # 셀레니엄 크롬 드라이버 설정 (headless 모드)
 def get_chrome_driver():
     options = Options()
@@ -93,10 +99,9 @@ def crawl_blog_ranto28(blog_url, blog_id):
 
 # 이전 크롤링 결과 로드 (블로그별로 저장)
 def load_previous_data():
-    if os.path.exists("posts_data.json"):
-        with open("posts_data.json", "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+    ensure_posts_data_file()
+    with open("posts_data.json", "r", encoding="utf-8") as f:
+        return json.load(f)
 
 # 현재 크롤링 결과 저장
 def save_data(data):
@@ -154,6 +159,9 @@ def update_file_on_github(commit_message="Update posts_data.json"):
         print("❌ GitHub 관련 환경 변수가 설정되어 있지 않습니다.")
         return
 
+    # 파일이 존재하지 않을 경우 대비하여 미리 생성
+    ensure_posts_data_file()
+    
     # 1. 현재 파일 내용을 base64 인코딩
     with open("posts_data.json", "r", encoding="utf-8") as f:
         file_content = f.read()
